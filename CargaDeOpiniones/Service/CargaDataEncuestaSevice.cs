@@ -3,13 +3,13 @@ using CargaDeEncuestasInternas.Models.dboSchema;
 using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.EntityFrameworkCore;
-
 using System.Globalization;
-
 using System.Configuration;
 using CsvEncuesta = CargaDeEncuestasInternas.Models.Csv.Encuesta;
 using CsvCliente = CargaDeEncuestasInternas.Models.Csv.Cliente;
 using CsvProducto = CargaDeEncuestasInternas.Models.Csv.Producto;
+using CsvResena = CargaDeEncuestasInternas.Models.Csv.Resena;
+using CsvComentarioSocial = CargaDeEncuestasInternas.Models.Csv.ComentarioSocial;
 
 namespace CargaDeEncuestasInternas.Service
 {
@@ -20,8 +20,68 @@ namespace CargaDeEncuestasInternas.Service
 
         // Método para obtener un contexto limpio en cada paso
         private OpinionesClientesContext GetContext() =>
-            new OpinionesClientesContext(new DbContextOptionsBuilder<OpinionesClientesContext>().UseSqlServer(_connectionString).Options);
+            new OpinionesClientesContext(new DbContextOptionsBuilder<OpinionesClientesContext>()
+                .UseSqlServer(_connectionString).Options);
 
+        // ── Helper: parsear IDs con prefijo de letra ──────────────
+        // "C007" → 7 | "W0001" → 1 | "T0003" → 3
+        private int ParsearId(string valor)
+        {
+            var soloNumeros = new string(valor.Trim().Where(char.IsDigit).ToArray());
+            return int.TryParse(soloNumeros, out int resultado) ? resultado : 0;
+        }
+
+        // ── Helper: obtener o crear cadena TipoCanal → Canal → Fuente ──
+        private int ObtenerOCrearFuente(OpinionesClientesContext db, string nombreCanal, string tipoCanal)
+        {
+            nombreCanal = nombreCanal.Trim();
+            tipoCanal = tipoCanal.Trim();
+
+            // 1. Buscar o crear Cat_TiposCanal
+            var tipo = db.Cat_TiposCanal.FirstOrDefault(t => t.Descripcion == tipoCanal);
+            if (tipo == null)
+            {
+                int nuevoIdTipo = db.Cat_TiposCanal.Any()
+                    ? db.Cat_TiposCanal.Max(t => t.idTipoCanal) + 1
+                    : 1;
+                tipo = new Cat_TiposCanal { idTipoCanal = nuevoIdTipo, Descripcion = tipoCanal };
+                db.Cat_TiposCanal.Add(tipo);
+                db.SaveChanges();
+                Console.WriteLine($"  + TipoCanal '{tipoCanal}' creado (ID={nuevoIdTipo}).");
+            }
+
+            // 2. Buscar o crear Cat_Canal
+            var canal = db.Cat_Canal.FirstOrDefault(c => c.NombreCanal == nombreCanal);
+            if (canal == null)
+            {
+                int nuevoIdCanal = db.Cat_Canal.Any()
+                    ? db.Cat_Canal.Max(c => c.idCanal) + 1
+                    : 1;
+                canal = new Cat_Canal { idCanal = nuevoIdCanal, NombreCanal = nombreCanal, idTipoCanal = tipo.idTipoCanal };
+                db.Cat_Canal.Add(canal);
+                db.SaveChanges();
+                Console.WriteLine($"  + Canal '{nombreCanal}' creado (ID={nuevoIdCanal}).");
+            }
+
+            // 3. Buscar o crear Fuentes
+            var fuente = db.Fuentes.FirstOrDefault(f => f.idCanal == canal.idCanal);
+            if (fuente == null)
+            {
+                int nuevoIdFuente = db.Fuentes.Any()
+                    ? db.Fuentes.Max(f => f.idFuente) + 1
+                    : 1;
+                fuente = new Fuentes { idFuente = nuevoIdFuente, idCanal = canal.idCanal, FechaCarga = DateOnly.FromDateTime(DateTime.Now) };
+                db.Fuentes.Add(fuente);
+                db.SaveChanges();
+                Console.WriteLine($"  + Fuente para '{nombreCanal}' creada (ID={nuevoIdFuente}).");
+            }
+
+            return fuente.idFuente;
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // PUNTO DE ENTRADA
+        // ════════════════════════════════════════════════════════════
         public void EjecutarPipelineCompleto()
         {
             // ── FASE 0: Infraestructura base ─────────────────────
@@ -76,10 +136,19 @@ namespace CargaDeEncuestasInternas.Service
                 CargarMaestros(db);
             }
 
-            // ── FASE C: Cargar Encuestas (Proceso Transaccional) ──
+            // ── FASE C: Cargar Encuestas ──────────────────────────
             ProcesarEncuestas();
+
+            // ── FASE D: Reseñas Web ───────────────────────────────
+            ProcesarResenas();
+
+            // ── FASE E: Comentarios Sociales ──────────────────────
+            ProcesarComentariosSociales();
         }
 
+        // ════════════════════════════════════════════════════════════
+        // FASE B — Maestros
+        // ════════════════════════════════════════════════════════════
         private void CargarMaestros(OpinionesClientesContext db)
         {
             var config = new CsvConfiguration(CultureInfo.InvariantCulture)
@@ -106,7 +175,6 @@ namespace CargaDeEncuestasInternas.Service
             {
                 var prods = csv.GetRecords<CsvProducto>().ToList();
 
-                // Caché local: nombre → id (solo IDs, sin entidades tracked)
                 var categoriaCache = db.Categoria
                     .AsNoTracking()
                     .ToDictionary(c => c.Nombre.ToLower(), c => c.idCategoria);
@@ -142,9 +210,13 @@ namespace CargaDeEncuestasInternas.Service
             db.SaveChanges();
         }
 
+        // ════════════════════════════════════════════════════════════
+        // FASE C — Encuestas
+        // ════════════════════════════════════════════════════════════
         private void ProcesarEncuestas()
         {
-            // ── Mapeo de clasificaciones ──────────────────────────
+            Console.WriteLine("-> Procesando Encuestas...");
+
             Dictionary<string, int> mapaClasif;
             using (var db = GetContext())
             {
@@ -153,7 +225,6 @@ namespace CargaDeEncuestasInternas.Service
                     .ToDictionary(c => c.Etiqueta.ToLower(), c => c.idClasificacion);
             }
 
-            // ── Calcular próximo ID de Opiniones ──────────────────
             int nextIdOpinion;
             using (var db = GetContext())
             {
@@ -162,7 +233,6 @@ namespace CargaDeEncuestasInternas.Service
                     : 1;
             }
 
-            // ── Leer CSV ──────────────────────────────────────────
             var config = new CsvConfiguration(CultureInfo.InvariantCulture)
             {
                 PrepareHeaderForMatch = args => args.Header.ToLower().Replace("ó", "o").Trim(),
@@ -175,7 +245,6 @@ namespace CargaDeEncuestasInternas.Service
 
             Console.WriteLine($"-> {registros.Count} encuestas leídas del CSV.");
 
-            // ── Cargar IDs válidos desde la DB ────────────────────
             HashSet<int> clientesValidos;
             HashSet<int> productosValidos;
             using (var db = GetContext())
@@ -184,7 +253,6 @@ namespace CargaDeEncuestasInternas.Service
                 productosValidos = db.Producto.Select(p => p.idProducto).ToHashSet();
             }
 
-            // ── Validar registros ANTES de procesar ───────────────
             var registrosValidos = new List<CsvEncuesta>();
             var registrosRechazados = 0;
 
@@ -192,13 +260,13 @@ namespace CargaDeEncuestasInternas.Service
             {
                 if (!clientesValidos.Contains(fila.IdCliente))
                 {
-                    Console.WriteLine($"[RECHAZADO] Encuesta {fila.IdOpinion}: idCliente={fila.IdCliente} no existe en la DB.");
+                    Console.WriteLine($"[RECHAZADO] Encuesta {fila.IdOpinion}: idCliente={fila.IdCliente} no existe en DB.");
                     registrosRechazados++;
                     continue;
                 }
                 if (!productosValidos.Contains(fila.IdProducto))
                 {
-                    Console.WriteLine($"[RECHAZADO] Encuesta {fila.IdOpinion}: idProducto={fila.IdProducto} no existe en la DB.");
+                    Console.WriteLine($"[RECHAZADO] Encuesta {fila.IdOpinion}: idProducto={fila.IdProducto} no existe en DB.");
                     registrosRechazados++;
                     continue;
                 }
@@ -219,7 +287,6 @@ namespace CargaDeEncuestasInternas.Service
                 return;
             }
 
-            // ── Procesar solo los registros válidos ───────────────
             Console.WriteLine($"-> Iniciando carga masiva de {registrosValidos.Count} encuestas...");
 
             foreach (var fila in registrosValidos)
@@ -231,7 +298,6 @@ namespace CargaDeEncuestasInternas.Service
                     {
                         int idClasif = mapaClasif[fila.Clasificacion.Trim().ToLower()];
 
-                        // 1. Inserción en tabla PADRE (Opiniones)
                         var op = new Opiniones
                         {
                             idOpinionGlobal = nextIdOpinion,
@@ -245,7 +311,6 @@ namespace CargaDeEncuestasInternas.Service
                         db.Opiniones.Add(op);
                         db.SaveChanges();
 
-                        // 2. Inserción en tabla HIJA (Encuesta) — comparten PK
                         db.Encuesta.Add(new Encuesta
                         {
                             idOpinionGlobal = nextIdOpinion,
@@ -256,13 +321,278 @@ namespace CargaDeEncuestasInternas.Service
 
                         tx.Commit();
                         Console.WriteLine($"[OK] Encuesta {fila.IdOpinion} importada (idOpinionGlobal={nextIdOpinion}).");
-                        nextIdOpinion++; // Solo incrementa si el commit fue exitoso
+                        nextIdOpinion++;
                     }
                     catch (Exception ex)
                     {
                         tx.Rollback();
                         var detalle = ex.InnerException?.Message ?? ex.Message;
                         Console.WriteLine($"[ERR] {fila.IdOpinion}: {detalle}");
+                    }
+                }
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // FASE D — Reseñas Web
+        // ════════════════════════════════════════════════════════════
+        private void ProcesarResenas()
+        {
+            Console.WriteLine("-> Procesando Reseñas Web...");
+
+            var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                PrepareHeaderForMatch = args => args.Header.ToLower().Trim(),
+                HeaderValidated = null,
+                MissingFieldFound = null
+            };
+
+            using var reader = new StreamReader(ConfigurationManager.AppSettings["PathFileResenas"]);
+            using var csv = new CsvReader(reader, config);
+            var registros = csv.GetRecords<CsvResena>().ToList();
+
+            Console.WriteLine($"-> {registros.Count} reseñas leídas del CSV.");
+
+            HashSet<int> clientesValidos;
+            HashSet<int> productosValidos;
+            using (var db = GetContext())
+            {
+                clientesValidos = db.Cliente.Select(c => c.idCliente).ToHashSet();
+                productosValidos = db.Producto.Select(p => p.idProducto).ToHashSet();
+            }
+
+            int nextIdOpinion;
+            using (var db = GetContext())
+            {
+                nextIdOpinion = db.Opiniones.Any()
+                    ? db.Opiniones.Max(o => o.idOpinionGlobal) + 1
+                    : 1;
+            }
+
+            // Obtener o crear fuente "Web Oficial" una sola vez
+            int idFuenteWeb;
+            using (var db = GetContext())
+            {
+                idFuenteWeb = ObtenerOCrearFuente(db, "Web Oficial", "Web");
+            }
+
+            var registrosValidos = new List<CsvResena>();
+            var registrosRechazados = 0;
+
+            foreach (var fila in registros)
+            {
+                if (string.IsNullOrWhiteSpace(fila.IdCliente))
+                {
+                    Console.WriteLine($"[RECHAZADO] Reseña {fila.IdReview}: IdCliente vacío.");
+                    registrosRechazados++;
+                    continue;
+                }
+
+                int idCliente = ParsearId(fila.IdCliente);
+                int idProducto = ParsearId(fila.IdProducto);
+
+                if (!clientesValidos.Contains(idCliente))
+                {
+                    Console.WriteLine($"[RECHAZADO] Reseña {fila.IdReview}: idCliente={idCliente} no existe en DB.");
+                    registrosRechazados++;
+                    continue;
+                }
+                if (!productosValidos.Contains(idProducto))
+                {
+                    Console.WriteLine($"[RECHAZADO] Reseña {fila.IdReview}: idProducto={idProducto} no existe en DB.");
+                    registrosRechazados++;
+                    continue;
+                }
+
+                registrosValidos.Add(fila);
+            }
+
+            Console.WriteLine($"-> {registrosValidos.Count} válidas / {registrosRechazados} rechazadas por integridad referencial.");
+
+            if (!registrosValidos.Any())
+            {
+                Console.WriteLine("[AVISO] No hay reseñas válidas para procesar.");
+                return;
+            }
+
+            Console.WriteLine($"-> Iniciando carga masiva de {registrosValidos.Count} reseñas...");
+
+            foreach (var fila in registrosValidos)
+            {
+                using (var db = GetContext())
+                using (var tx = db.Database.BeginTransaction())
+                {
+                    try
+                    {
+                        int idCliente = ParsearId(fila.IdCliente);
+                        int idProducto = ParsearId(fila.IdProducto);
+
+                        var op = new Opiniones
+                        {
+                            idOpinionGlobal = nextIdOpinion,
+                            idCliente = idCliente,
+                            idProducto = idProducto,
+                            Fecha = DateOnly.ParseExact(fila.Fecha.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            Comentario = fila.Comentario.Trim(),
+                            CodigoOriginal = fila.IdReview.Trim(),
+                            idFuente = idFuenteWeb
+                        };
+                        db.Opiniones.Add(op);
+                        db.SaveChanges();
+
+                        db.Resena.Add(new Resena
+                        {
+                            idOpinionGlobal = nextIdOpinion,
+                            Rating = (byte)fila.Rating
+                        });
+                        db.SaveChanges();
+
+                        tx.Commit();
+                        Console.WriteLine($"[OK] Reseña {fila.IdReview} importada (idOpinionGlobal={nextIdOpinion}).");
+                        nextIdOpinion++;
+                    }
+                    catch (Exception ex)
+                    {
+                        tx.Rollback();
+                        var detalle = ex.InnerException?.Message ?? ex.Message;
+                        Console.WriteLine($"[ERR] Reseña {fila.IdReview}: {detalle}");
+                    }
+                }
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // FASE E — Comentarios Sociales
+        // ════════════════════════════════════════════════════════════
+        private void ProcesarComentariosSociales()
+        {
+            Console.WriteLine("-> Procesando Comentarios Sociales...");
+
+            var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                PrepareHeaderForMatch = args => args.Header.ToLower().Trim(),
+                HeaderValidated = null,
+                MissingFieldFound = null
+            };
+
+            using var reader = new StreamReader(ConfigurationManager.AppSettings["PathFileComentariosSociales"]);
+            using var csv = new CsvReader(reader, config);
+            var registros = csv.GetRecords<CsvComentarioSocial>().ToList();
+
+            Console.WriteLine($"-> {registros.Count} comentarios sociales leídos del CSV.");
+
+            HashSet<int> clientesValidos;
+            HashSet<int> productosValidos;
+            using (var db = GetContext())
+            {
+                clientesValidos = db.Cliente.Select(c => c.idCliente).ToHashSet();
+                productosValidos = db.Producto.Select(p => p.idProducto).ToHashSet();
+            }
+
+            int nextIdOpinion;
+            using (var db = GetContext())
+            {
+                nextIdOpinion = db.Opiniones.Any()
+                    ? db.Opiniones.Max(o => o.idOpinionGlobal) + 1
+                    : 1;
+            }
+
+            // Caché de fuentes por canal para no recrearlas en cada iteración
+            var fuenteCache = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            var registrosValidos = new List<CsvComentarioSocial>();
+            var registrosRechazados = 0;
+
+            foreach (var fila in registros)
+            {
+                if (string.IsNullOrWhiteSpace(fila.IdCliente))
+                {
+                    Console.WriteLine($"[RECHAZADO] Comentario {fila.IdComment}: IdCliente vacío.");
+                    registrosRechazados++;
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(fila.Fuente))
+                {
+                    Console.WriteLine($"[RECHAZADO] Comentario {fila.IdComment}: Fuente vacía.");
+                    registrosRechazados++;
+                    continue;
+                }
+
+                int idCliente = ParsearId(fila.IdCliente);
+                int idProducto = ParsearId(fila.IdProducto);
+
+                if (!clientesValidos.Contains(idCliente))
+                {
+                    Console.WriteLine($"[RECHAZADO] Comentario {fila.IdComment}: idCliente={idCliente} no existe en DB.");
+                    registrosRechazados++;
+                    continue;
+                }
+                if (!productosValidos.Contains(idProducto))
+                {
+                    Console.WriteLine($"[RECHAZADO] Comentario {fila.IdComment}: idProducto={idProducto} no existe en DB.");
+                    registrosRechazados++;
+                    continue;
+                }
+
+                registrosValidos.Add(fila);
+            }
+
+            Console.WriteLine($"-> {registrosValidos.Count} válidos / {registrosRechazados} rechazados por integridad referencial.");
+
+            if (!registrosValidos.Any())
+            {
+                Console.WriteLine("[AVISO] No hay comentarios sociales válidos para procesar.");
+                return;
+            }
+
+            Console.WriteLine($"-> Iniciando carga masiva de {registrosValidos.Count} comentarios sociales...");
+
+            foreach (var fila in registrosValidos)
+            {
+                using (var db = GetContext())
+                using (var tx = db.Database.BeginTransaction())
+                {
+                    try
+                    {
+                        int idCliente = ParsearId(fila.IdCliente);
+                        int idProducto = ParsearId(fila.IdProducto);
+
+                        // Obtener o crear fuente con caché
+                        if (!fuenteCache.ContainsKey(fila.Fuente.Trim()))
+                        {
+                            int idFuente = ObtenerOCrearFuente(db, fila.Fuente.Trim(), "Red Social");
+                            fuenteCache[fila.Fuente.Trim()] = idFuente;
+                        }
+                        int idFuenteSocial = fuenteCache[fila.Fuente.Trim()];
+
+                        var op = new Opiniones
+                        {
+                            idOpinionGlobal = nextIdOpinion,
+                            idCliente = idCliente,
+                            idProducto = idProducto,
+                            Fecha = DateOnly.ParseExact(fila.Fecha.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            Comentario = fila.Comentario.Trim(),
+                            CodigoOriginal = fila.IdComment.Trim(),
+                            idFuente = idFuenteSocial
+                        };
+                        db.Opiniones.Add(op);
+                        db.SaveChanges();
+
+                        db.ComentarioSocial.Add(new ComentarioSocial
+                        {
+                            idOpinionGlobal = nextIdOpinion
+                        });
+                        db.SaveChanges();
+
+                        tx.Commit();
+                        Console.WriteLine($"[OK] Comentario {fila.IdComment} importado (idOpinionGlobal={nextIdOpinion}).");
+                        nextIdOpinion++;
+                    }
+                    catch (Exception ex)
+                    {
+                        tx.Rollback();
+                        var detalle = ex.InnerException?.Message ?? ex.Message;
+                        Console.WriteLine($"[ERR] Comentario {fila.IdComment}: {detalle}");
                     }
                 }
             }
