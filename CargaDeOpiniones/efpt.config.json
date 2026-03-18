@@ -1,6 +1,6 @@
 ﻿{
    "CodeGenerationMode": 4,
-   "ContextClassName": "OpinionesClientesContext",
+   "ContextClassName": "DWHOpinionesClientesContext",
    "ContextNamespace": null,
    "FilterSchemas": false,
    "IncludeConnectionString": false,
@@ -8,10 +8,10 @@
    "MinimumProductVersion": "2.6.1378",
    "ModelNamespace": null,
    "OutputContextPath": null,
-   "OutputPath": "Models",
+   "OutputPath": "Entities",
    "PluralRules": null,
    "PreserveCasingWithRegex": true,
-   "ProjectRootNamespace": "CargaDeEncuestasInternas",
+   "ProjectRootNamespace": "EncuestasInternas",
    "Schemas": null,
    "SelectedHandlebarsLanguage": 3,
    "SelectedToBeGenerated": 0,
@@ -19,47 +19,31 @@
    "T4TemplatePath": null,
    "Tables": [
       {
-         "Name": "[dbo].[Cat_Canal]",
+         "Name": "[Dim].[Canal]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[Cat_TiposCanal]",
+         "Name": "[Dim].[Clasificacion]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[Categoria]",
+         "Name": "[Dim].[Cliente]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[Clasificacion]",
+         "Name": "[Dim].[Producto]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[Cliente]",
+         "Name": "[Dim].[Tiempo]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[ComentarioSocial]",
+         "Name": "[Dim].[TipoOpinion]",
          "ObjectType": 0
       },
       {
-         "Name": "[dbo].[Encuesta]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[dbo].[Fuentes]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[dbo].[Opiniones]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[dbo].[Producto]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[dbo].[Resena]",
+         "Name": "[Fact].[Opiniones]",
          "ObjectType": 0
       }
    ],

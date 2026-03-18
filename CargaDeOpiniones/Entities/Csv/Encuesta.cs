@@ -1,5 +1,4 @@
-﻿
-namespace CargaDeEncuestasInternas.Models.Csv
+﻿namespace CargaDeEncuestasInternas.Entities.Csv
 {
         public class Encuesta
         {

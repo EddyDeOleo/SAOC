@@ -2,16 +2,17 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
-using CargaDeEncuestasInternas.Models.dboSchema;
+using EncuestasInternas.Entities.DimSchema;
+using EncuestasInternas.Entities.FactSchema;
 
 
-namespace CargaDeEncuestasInternas.Models.dboSchema;
+namespace EncuestasInternas.Entities.DimSchema;
 
-public partial class Cat_Canal
+public partial class Canal
 {
     public int idCanal { get; set; }
 
-    public int idTipoCanal { get; set; }
-
     public string NombreCanal { get; set; }
+
+    public string TipoCanal { get; set; }
 }

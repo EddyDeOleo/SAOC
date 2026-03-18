@@ -2,16 +2,17 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
-using CargaDeEncuestasInternas.Models.dboSchema;
+using EncuestasInternas.Entities.DimSchema;
+using EncuestasInternas.Entities.FactSchema;
 
 
-namespace CargaDeEncuestasInternas.Models.dboSchema;
+namespace EncuestasInternas.Entities.DimSchema;
 
 public partial class Producto
 {
     public int idProducto { get; set; }
 
-    public string Nombre { get; set; }
+    public string NombreProducto { get; set; }
 
-    public int idCategoria { get; set; }
+    public string Categoria { get; set; }
 }
