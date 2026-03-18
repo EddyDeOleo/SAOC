@@ -7,11 +7,11 @@ using CargaDeEncuestasInternas.Models.dboSchema;
 
 namespace CargaDeEncuestasInternas.Models.dboSchema;
 
-public partial class Cliente
+public partial class Cat_Canal
 {
-    public int idCliente { get; set; }
+    public int idCanal { get; set; }
 
-    public string Nombre { get; set; }
+    public int idTipoCanal { get; set; }
 
-    public string Email { get; set; }
+    public string NombreCanal { get; set; }
 }

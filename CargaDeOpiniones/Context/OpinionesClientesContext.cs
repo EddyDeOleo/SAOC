@@ -19,21 +19,13 @@ public partial class OpinionesClientesContext : DbContext
 
     public virtual DbSet<Cat_TiposCanal> Cat_TiposCanal { get; set; }
 
-    public virtual DbSet<Categoria> Categoria { get; set; }
-
-    public virtual DbSet<Clasificacion> Clasificacion { get; set; }
-
-    public virtual DbSet<Cliente> Cliente { get; set; }
 
     public virtual DbSet<ComentarioSocial> ComentarioSocial { get; set; }
 
-    public virtual DbSet<Encuesta> Encuesta { get; set; }
 
     public virtual DbSet<Fuentes> Fuentes { get; set; }
 
     public virtual DbSet<Opiniones> Opiniones { get; set; }
-
-    public virtual DbSet<Producto> Producto { get; set; }
 
     public virtual DbSet<Resena> Resena { get; set; }
 
@@ -41,14 +33,9 @@ public partial class OpinionesClientesContext : DbContext
     {
         modelBuilder.ApplyConfiguration(new Configurations.Cat_CanalConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.Cat_TiposCanalConfiguration());
-        modelBuilder.ApplyConfiguration(new Configurations.CategoriaConfiguration());
-        modelBuilder.ApplyConfiguration(new Configurations.ClasificacionConfiguration());
-        modelBuilder.ApplyConfiguration(new Configurations.ClienteConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.ComentarioSocialConfiguration());
-        modelBuilder.ApplyConfiguration(new Configurations.EncuestaConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.FuentesConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.OpinionesConfiguration());
-        modelBuilder.ApplyConfiguration(new Configurations.ProductoConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.ResenaConfiguration());
 
         OnModelCreatingPartial(modelBuilder);

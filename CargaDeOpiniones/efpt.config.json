@@ -11,7 +11,7 @@
    "OutputPath": "Entities",
    "PluralRules": null,
    "PreserveCasingWithRegex": true,
-   "ProjectRootNamespace": "EncuestasInternas",
+   "ProjectRootNamespace": "CargaDeEncuestasInternas.Models.DwhSchema",
    "Schemas": null,
    "SelectedHandlebarsLanguage": 3,
    "SelectedToBeGenerated": 0,
@@ -19,31 +19,19 @@
    "T4TemplatePath": null,
    "Tables": [
       {
-         "Name": "[Dim].[Canal]",
+         "Name": "[Stg].[ComentariosSociales]",
          "ObjectType": 0
       },
       {
-         "Name": "[Dim].[Clasificacion]",
+         "Name": "[Stg].[Encuestas]",
          "ObjectType": 0
       },
       {
-         "Name": "[Dim].[Cliente]",
+         "Name": "[Stg].[LogExtraccion]",
          "ObjectType": 0
       },
       {
-         "Name": "[Dim].[Producto]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[Dim].[Tiempo]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[Dim].[TipoOpinion]",
-         "ObjectType": 0
-      },
-      {
-         "Name": "[Fact].[Opiniones]",
+         "Name": "[Stg].[Resenas]",
          "ObjectType": 0
       }
    ],
