@@ -59,7 +59,6 @@ namespace CargaDeEncuestasInternas.Persistence.Repositories.Csv
             sw.Stop();
             _logger.LogInfo(
                 $"[{NombreFuente}] {resultado.Count} registros extraídos en {sw.ElapsedMilliseconds}ms");
-
             return resultado;
         }
     }
