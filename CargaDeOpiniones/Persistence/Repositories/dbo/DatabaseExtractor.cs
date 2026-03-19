@@ -1,80 +1,72 @@
 ﻿
-
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.dboSchema;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using System.Data;
 using System.Diagnostics;
 
-namespace CargaDeEncuestasInternas.Persistence.Repositories.dbo
+namespace CargaDeEncuestasInternas.Persistence.Repositories.dbo;
+
+/// <summary>
+/// Extrae reseñas web desde la BD relacional OLTP.
+/// Rendimiento: ADO.NET + Stored Procedure es más eficiente
+///              que EF Core para lecturas masivas — SqlDataReader
+///              lee row por row sin materializar entidades en memoria.
+/// </summary>
+public class DatabaseExtractor : IExtractor<Resena>
 {
+    public string NombreFuente => "DATABASE";
 
-    /// <summary>
-    /// Extrae reseñas web desde la BD relacional OLTP.
-    /// Rendimiento: ADO.NET directo es más eficiente que EF Core
-    ///              para lecturas masivas sin necesidad de tracking.
-    /// </summary>
-    public class DatabaseExtractor : IExtractor<Resena>
+    private readonly IConfiguration _config;
+    private readonly ILoggerService _logger;
+
+    public DatabaseExtractor(IConfiguration config, ILoggerService logger)
     {
-        public string NombreFuente => "DATABASE";
+        _config = config;
+        _logger = logger;
+    }
 
-        private readonly IConfiguration _config;
-        private readonly ILoggerService _logger;
+    public async Task<IEnumerable<Resena>> ExtractAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var connString = _config.GetConnectionString("OltpConnection")
+            ?? throw new InvalidOperationException(
+                "OltpConnection no configurado en appsettings.json");
 
-        public DatabaseExtractor(IConfiguration config, ILoggerService logger)
+        _logger.LogInfo($"[{NombreFuente}] Ejecutando sp_ObtenerResenas...");
+
+        var resultado = new List<Resena>();
+
+        await using var conn = new SqlConnection(connString);
+        await conn.OpenAsync(cancellationToken);
+
+        // Stored Procedure — más eficiente y mantenible que query inline
+        await using var cmd = new SqlCommand("sp_ObtenerResenas", conn)
         {
-            _config = config;
-            _logger = logger;
-        }
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = 120
+        };
 
-        public async Task<IEnumerable<Resena>> ExtractAsync(
-            CancellationToken cancellationToken = default)
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
         {
-            var sw = Stopwatch.StartNew();
-            var connString = _config.GetConnectionString("OltpConnection")
-                ?? throw new InvalidOperationException(
-                    "OltpConnection no configurado en appsettings.json");
+            var codigoRaw = reader["CodigoOriginal"].ToString()!;
+            var soloNumeros = new string(codigoRaw.Where(char.IsDigit).ToArray());
 
-            _logger.LogInfo($"[{NombreFuente}] Iniciando extracción de Reseñas Web");
-
-            var resultado = new List<Resena>();
-
-            await using var conn = new SqlConnection(connString);
-            await conn.OpenAsync(cancellationToken);
-
-            const string sql = """
-            SELECT
-                op.CodigoOriginal,
-                op.idCliente,
-                op.idProducto,
-                CONVERT(VARCHAR(10), op.Fecha, 120) AS Fecha,
-                op.Comentario,
-                r.Rating
-            FROM dbo.Opiniones op
-            INNER JOIN dbo.Resena r
-                ON op.idOpinionGlobal = r.idOpinionGlobal
-            """;
-
-            await using var cmd = new SqlCommand(sql, conn);
-            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
+            resultado.Add(new Resena
             {
-                var codigoRaw = reader["CodigoOriginal"].ToString()!;
-                var soloNumeros = new string(codigoRaw.Where(char.IsDigit).ToArray());
-
-                resultado.Add(new Resena
-                {
-                    idOpinionGlobal = int.Parse(soloNumeros),
-                    Rating = Convert.ToByte(reader["Rating"])
-                });
-            }
-
-            sw.Stop();
-            _logger.LogInfo(
-                $"[{NombreFuente}] {resultado.Count} reseñas extraídas en {sw.ElapsedMilliseconds}ms");
-
-            return resultado;
+                idOpinionGlobal = int.Parse(soloNumeros),
+                Rating = Convert.ToByte(reader["Rating"])
+            });
         }
+
+        sw.Stop();
+        _logger.LogInfo(
+            $"[{NombreFuente}] {resultado.Count:N0} reseñas extraídas en {sw.ElapsedMilliseconds:N0}ms");
+
+        return resultado;
     }
 }
