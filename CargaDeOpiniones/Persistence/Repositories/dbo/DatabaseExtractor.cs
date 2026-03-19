@@ -60,9 +60,12 @@ namespace CargaDeEncuestasInternas.Persistence.Repositories.dbo
 
             while (await reader.ReadAsync(cancellationToken))
             {
+                var codigoRaw = reader["CodigoOriginal"].ToString()!;
+                var soloNumeros = new string(codigoRaw.Where(char.IsDigit).ToArray());
+
                 resultado.Add(new Resena
                 {
-                    idOpinionGlobal = Convert.ToInt32(reader["CodigoOriginal"]),
+                    idOpinionGlobal = int.Parse(soloNumeros),
                     Rating = Convert.ToByte(reader["Rating"])
                 });
             }

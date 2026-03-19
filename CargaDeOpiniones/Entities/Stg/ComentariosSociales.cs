@@ -7,7 +7,7 @@ using CargaDeEncuestasInternas.Models.DwhSchema.Entities.StgSchema;
 
 namespace CargaDeEncuestasInternas.Models.DwhSchema.Entities.StgSchema;
 
-public partial class ComentariosSociales
+public class ComentariosSociales
 {
     public int idStaging { get; set; }
 

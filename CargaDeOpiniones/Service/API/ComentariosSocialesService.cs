@@ -76,15 +76,6 @@ namespace CargaDeEncuestasInternas.Service.API
             }
         }
 
-        Task<AnalisisComentariosWeb.API.Models.ServiceResult<IEnumerable<ComentarioSocialResponse>>> IComentariosSocialesService.GetAllAsync(CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        Task<AnalisisComentariosWeb.API.Models.ServiceResult<IEnumerable<ComentarioSocialResponse>>> IComentariosSocialesService.GetByRedSocialAsync(string redSocial, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
 
         // Query base reutilizable — JOIN: ComentarioSocial → Opiniones → Fuentes → Cat_Canal
         private IQueryable<ComentarioSocialResponse> ObtenerQueryBase() =>
