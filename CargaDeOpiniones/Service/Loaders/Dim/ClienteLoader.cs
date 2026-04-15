@@ -4,34 +4,37 @@ using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
-using Microsoft.EntityFrameworkCore;
+using EFCore.BulkExtensions;
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
-    public class ClienteLoader : IDimensionLoader<OpinionExtraidaDto>
+    public sealed class ClienteLoader : IDimensionLoader<OpinionExtraidaDto>
     {
-        private readonly DWHOpinionesClientesContext_ETL _context;
-        public ClienteLoader(DWHOpinionesClientesContext_ETL context) => _context = context;
+        private readonly DWHOpinionesClientesContext_ETL _db;
+
+        public ClienteLoader(DWHOpinionesClientesContext_ETL db) => _db = db;
 
         public async Task LoadAsync(IEnumerable<OpinionExtraidaDto> data, CancellationToken ct = default)
         {
-            await _context.Cliente.ExecuteDeleteAsync(ct);
+            var idsUnicos = new HashSet<int>(
+                data
+                    .Where(d => !string.IsNullOrWhiteSpace(d.IdCliente)
+                             && int.TryParse(d.IdCliente, out _))
+                    .Select(d => int.Parse(d.IdCliente))
+            );
 
-            var hashSetClientes = new HashSet<string>();
-
-            var clientesParaCargar = data
-                .Where(x => hashSetClientes.Add(x.IdCliente)) 
-                .Select(x => new Cliente
+            var entidades = idsUnicos
+                .Select(id => new Cliente
                 {
-                    idCliente = int.Parse(x.IdCliente),
-                    NombreCliente = "Cliente Desconocido", 
-                    Email = "sin-email@empresa.com",
-                    Pais = "República Dominicana",
-                    Segmento = "General"
-                }).ToArray();
+                    idCliente = id,
+                    NombreCliente = $"Cliente_{id}",
+                    Email = string.Empty,
+                    Pais = "N/D",
+                    Segmento = "N/D"
+                })
+                .ToArray();
 
-            await _context.Cliente.AddRangeAsync(clientesParaCargar, ct);
-            await _context.SaveChangesAsync(ct);
+            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }
     }
 }

@@ -1,44 +1,63 @@
-﻿
-
-using CargaDeEncuestasInternas.Interfaces;
+﻿using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
-using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using EFCore.BulkExtensions;
+
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
-    public class TiempoLoader : IDimensionLoader<OpinionExtraidaDto>
+    public sealed class TiempoLoader : IDimensionLoader<OpinionExtraidaDto>
     {
-        private readonly DWHOpinionesClientesContext_ETL _context;
+        private readonly DWHOpinionesClientesContext_ETL _db;
 
-        public TiempoLoader(DWHOpinionesClientesContext_ETL context) => _context = context;
+        private static readonly string[] _formatos =
+            ["yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy", "yyyy/MM/dd"];
+
+        public TiempoLoader(DWHOpinionesClientesContext_ETL db) => _db = db;
 
         public async Task LoadAsync(IEnumerable<OpinionExtraidaDto> data, CancellationToken ct = default)
         {
-            await _context.Tiempo.ExecuteDeleteAsync(ct);
+            var fechasUnicas = new HashSet<DateOnly>(
+                data
+                    .Where(d => !string.IsNullOrWhiteSpace(d.Fecha))
+                    .Select(d =>
+                    {
+                        var pudo = DateTime.TryParseExact(
+                            d.Fecha, _formatos,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None, out var dt);
 
-            var fechasUnicas = data
-                .Select(x => DateTime.Parse(x.Fecha))
-                .Distinct()
+                        if (!pudo) pudo = DateTime.TryParse(d.Fecha, out dt);
+
+                        return pudo ? DateOnly.FromDateTime(dt) : DateOnly.MinValue;
+                    })
+                    .Where(f => f != DateOnly.MinValue)   // descarta fechas inválidas
+            );
+
+            var cultura = new CultureInfo("es-ES");
+
+            var entidades = fechasUnicas
+                .Select(fecha =>
+                {
+                    var diaSemana = (int)fecha.DayOfWeek;  
+                    return new Tiempo
+                    {
+                        Fecha = fecha,
+                        Anio = (short)fecha.Year,
+                        Trimestre = (byte)((fecha.Month - 1) / 3 + 1),
+                        Mes = (byte)fecha.Month,
+                        NombreMes = fecha.ToString("MMMM", cultura),
+                        Semana = (byte)ISOWeek.GetWeekOfYear(fecha.ToDateTime(TimeOnly.MinValue)),
+                        DiaSemana = (byte)diaSemana,
+                        NombreDia = fecha.ToString("dddd", cultura),
+                        EsFinDeSemana = diaSemana is 0 or 6
+                    };
+                })
                 .ToArray();
 
-            var registrosTiempo = fechasUnicas.Select(fecha => new Tiempo
-            {
-                idTiempo = int.Parse(fecha.ToString("yyyyMMdd")),
-                Fecha = DateOnly.FromDateTime(fecha),
-                Anio = (short)fecha.Year,
-                Trimestre = (byte)((fecha.Month + 2) / 3),
-                Mes = (byte)fecha.Month,
-                NombreMes = fecha.ToString("MMMM"),
-                Semana = (byte)((fecha.DayOfYear / 7) + 1),
-                DiaSemana = (byte)fecha.DayOfWeek,
-                NombreDia = fecha.ToString("dddd"),
-                EsFinDeSemana = fecha.DayOfWeek == DayOfWeek.Saturday || fecha.DayOfWeek == DayOfWeek.Sunday
-            }).ToArray();
-
-            await _context.Tiempo.AddRangeAsync(registrosTiempo, ct);
-            await _context.SaveChangesAsync(ct);
+            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }
     }
 }

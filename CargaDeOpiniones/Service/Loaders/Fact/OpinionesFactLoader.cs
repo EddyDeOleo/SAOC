@@ -1,6 +1,4 @@
-﻿
-
-using CargaDeEncuestasInternas.Interfaces;
+﻿using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.FactSchema;
@@ -17,25 +15,40 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Fact
         {
             await _context.Opiniones.ExecuteDeleteAsync(ct);
 
-            var hechos = data.Select(x => new Opiniones
-            {
-                CodigoOriginal = x.CodigoOriginal,
-                idTiempo = int.Parse(DateTime.Parse(x.Fecha).ToString("yyyyMMdd")),
-                idCliente = int.Parse(x.IdCliente),
-                idProducto = int.Parse(x.IdProducto),
-                PuntajeSatisfaccion = (byte?)(x.PuntajeSatisfaccion ?? 0),
-                Rating = (byte?)(x.Rating ?? 0),
-                EsPositiva = (byte)(x.PuntajeSatisfaccion >= 4 || x.Rating >= 4 ? 1 : 0),
-                EsNegativa = (byte)(x.PuntajeSatisfaccion <= 2 || x.Rating <= 2 ? 1 : 0),
-                EsNeutra = (byte)(x.PuntajeSatisfaccion == 3 || x.Rating == 3 ? 1 : 0),
-                ConteoOpinion = 1,
-                idCanal = 1,
-                idClasificacion = 1,
-                idTipoOpinion = 1
-            }).ToArray();
+            var hechos = data
+                .Where(x => !string.IsNullOrWhiteSpace(x.Fecha)) 
+                .Select(x =>
+                {
+                    bool esFechaValida = DateTime.TryParse(x.Fecha, out DateTime fechaCasteada);
+                    return new { x, fechaCasteada, esFechaValida };
+                })
+                .Where(temp => temp.esFechaValida) 
+                .Select(temp => new Opiniones
+                {
+                    CodigoOriginal = temp.x.CodigoOriginal,
+                    idTiempo = int.Parse(temp.fechaCasteada.ToString("yyyyMMdd")),
 
-            await _context.Opiniones.AddRangeAsync(hechos, ct);
-            await _context.SaveChangesAsync(ct);
+                    idCliente = int.TryParse(temp.x.IdCliente, out int idC) ? idC : 0,
+                    idProducto = int.TryParse(temp.x.IdProducto, out int idP) ? idP : 0,
+
+                    PuntajeSatisfaccion = (byte?)(temp.x.PuntajeSatisfaccion ?? 0),
+                    Rating = (byte?)(temp.x.Rating ?? 0),
+
+                    EsPositiva = (byte)(temp.x.PuntajeSatisfaccion >= 4 || temp.x.Rating >= 4 ? 1 : 0),
+                    EsNegativa = (byte)(temp.x.PuntajeSatisfaccion <= 2 || temp.x.Rating <= 2 ? 1 : 0),
+                    EsNeutra = (byte)(temp.x.PuntajeSatisfaccion == 3 || temp.x.Rating == 3 ? 1 : 0),
+
+                    ConteoOpinion = 1,
+                    idCanal = 1, 
+                    idClasificacion = 1,
+                    idTipoOpinion = 1
+                }).ToArray();
+
+            if (hechos.Any())
+            {
+                await _context.Opiniones.AddRangeAsync(hechos, ct);
+                await _context.SaveChangesAsync(ct);
+            }
         }
     }
 }

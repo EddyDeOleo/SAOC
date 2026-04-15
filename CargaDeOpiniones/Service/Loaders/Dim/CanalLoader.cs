@@ -1,33 +1,37 @@
 ﻿
-
+using EFCore.BulkExtensions;
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
-using Microsoft.EntityFrameworkCore;
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
-    public class CanalLoader : IDimensionLoader<OpinionExtraidaDto>
+    public sealed class CanalLoader : IDimensionLoader<OpinionExtraidaDto>
     {
-        private readonly DWHOpinionesClientesContext_ETL _context;
-        public CanalLoader(DWHOpinionesClientesContext_ETL context) => _context = context;
+        private readonly DWHOpinionesClientesContext_ETL _db;
+
+        private static readonly Canal[] _semilla =
+        [
+            new() { idCanal = 1, NombreCanal = "CSV",      TipoCanal = "Archivo"       },
+        new() { idCanal = 2, NombreCanal = "DATABASE", TipoCanal = "Base de Datos" },
+        new() { idCanal = 3, NombreCanal = "API",      TipoCanal = "Web"           }
+        ];
+
+        public CanalLoader(DWHOpinionesClientesContext_ETL db) => _db = db;
 
         public async Task LoadAsync(IEnumerable<OpinionExtraidaDto> data, CancellationToken ct = default)
         {
-            await _context.Canal.ExecuteDeleteAsync(ct);
-
-            var fuentesUnicas = new HashSet<string>();
-            var canales = data
-                .Where(x => fuentesUnicas.Add(x.FuenteOrigen))
-                .Select(x => new Canal
+            var entidades = _semilla
+                .Select(c => new Canal
                 {
-                    NombreCanal = x.FuenteOrigen,
-                    TipoCanal = x.RedSocial ?? "Interno"
-                }).ToArray();
+                    idCanal = c.idCanal,
+                    NombreCanal = c.NombreCanal,
+                    TipoCanal = c.TipoCanal
+                })
+                .ToArray();
 
-            await _context.Canal.AddRangeAsync(canales, ct);
-            await _context.SaveChangesAsync(ct);
+            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }
     }
 }

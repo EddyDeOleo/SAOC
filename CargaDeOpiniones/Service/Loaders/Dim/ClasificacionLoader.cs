@@ -4,31 +4,35 @@ using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
-using Microsoft.EntityFrameworkCore;
+using EFCore.BulkExtensions;
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
-    public class ClasificacionLoader : IDimensionLoader<OpinionExtraidaDto>
+    public sealed class ClasificacionLoader : IDimensionLoader<OpinionExtraidaDto>
     {
-        private readonly DWHOpinionesClientesContext_ETL _context;
-        public ClasificacionLoader(DWHOpinionesClientesContext_ETL context) => _context = context;
+        private readonly DWHOpinionesClientesContext_ETL _db;
+
+        private static readonly Clasificacion[] _semilla =
+        [
+            new() { idClasificacion = 1, Etiqueta = "Positiva", EsPositiva = true  },
+        new() { idClasificacion = 2, Etiqueta = "Negativa", EsPositiva = false },
+        new() { idClasificacion = 3, Etiqueta = "Neutra",   EsPositiva = false }
+        ];
+
+        public ClasificacionLoader(DWHOpinionesClientesContext_ETL db) => _db = db;
 
         public async Task LoadAsync(IEnumerable<OpinionExtraidaDto> data, CancellationToken ct = default)
         {
-            await _context.Clasificacion.ExecuteDeleteAsync(ct);
-
-            var set = new HashSet<string>();
-            var items = data
-                .Where(x => !string.IsNullOrEmpty(x.Clasificacion) && set.Add(x.Clasificacion))
-                .Select(x => new Clasificacion
+            var entidades = _semilla
+                .Select(c => new Clasificacion
                 {
-                    idClasificacion = x.Clasificacion.GetHashCode(),
-                    Etiqueta = x.Clasificacion,
-                    EsPositiva = x.PuntajeSatisfaccion >= 4 
-                }).ToArray();
+                    idClasificacion = c.idClasificacion,
+                    Etiqueta = c.Etiqueta,
+                    EsPositiva = c.EsPositiva
+                })
+                .ToArray();
 
-            await _context.Clasificacion.AddRangeAsync(items, ct);
-            await _context.SaveChangesAsync(ct);
+            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }
     }
 }

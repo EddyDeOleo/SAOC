@@ -2,32 +2,37 @@
 
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
-using CargaDeEncuestasInternas.Models.DwhSchema.Entities;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
-using Microsoft.EntityFrameworkCore;
+using EFCore.BulkExtensions;
+
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
-    public class TipoOpinionLoader : IDimensionLoader<OpinionExtraidaDto>
+    public sealed class TipoOpinionLoader : IDimensionLoader<OpinionExtraidaDto>
     {
-        private readonly DWHOpinionesClientesContext_ETL _context;
-        public TipoOpinionLoader(DWHOpinionesClientesContext_ETL context) => _context = context;
+        private readonly DWHOpinionesClientesContext_ETL _db;
+
+        private static readonly TipoOpinion[] _semilla =
+        [
+            new() { idTipoOpinion = 1, Descripcion = "Encuesta"          },
+        new() { idTipoOpinion = 2, Descripcion = "Reseña"            },
+        new() { idTipoOpinion = 3, Descripcion = "Comentario Social" }
+        ];
+
+        public TipoOpinionLoader(DWHOpinionesClientesContext_ETL db) => _db = db;
 
         public async Task LoadAsync(IEnumerable<OpinionExtraidaDto> data, CancellationToken ct = default)
         {
-            await _context.TipoOpinion.ExecuteDeleteAsync(ct);
-
-            var tiposUnicos = new HashSet<string>();
-            var tipos = data
-                .Where(x => tiposUnicos.Add(x.FuenteOrigen))
-                .Select(x => new TipoOpinion
+            var entidades = _semilla
+                .Select(t => new TipoOpinion
                 {
-                    Descripcion = x.FuenteOrigen
-                }).ToArray();
+                    idTipoOpinion = t.idTipoOpinion,
+                    Descripcion = t.Descripcion
+                })
+                .ToArray();
 
-            await _context.TipoOpinion.AddRangeAsync(tipos, ct);
-            await _context.SaveChangesAsync(ct);
+            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }
     }
 }

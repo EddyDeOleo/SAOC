@@ -9,6 +9,7 @@ namespace CargaDeEncuestasInternas.Service;
 
 public class EtlOrchestrator
 {
+    private readonly DwhCleanerService _cleaner;
     private readonly IExtractor<Encuesta> _csvExtractor;
     private readonly IExtractor<Resena> _dbExtractor;
     private readonly IExtractor<ComentarioSocialDto> _apiExtractor;
@@ -21,6 +22,7 @@ public class EtlOrchestrator
     private readonly ILoggerService _logger;
 
     public EtlOrchestrator(
+        DwhCleanerService cleaner,
         IExtractor<Encuesta> csvExtractor,
         IExtractor<Resena> dbExtractor,
         IExtractor<ComentarioSocialDto> apiExtractor,
@@ -29,6 +31,7 @@ public class EtlOrchestrator
         IEnumerable<IDimensionLoader<OpinionExtraidaDto>> dimLoaders, 
         IFactLoader<OpinionExtraidaDto> factLoader)
     {
+        _cleaner = cleaner;
         _csvExtractor = csvExtractor;
         _dbExtractor = dbExtractor;
         _apiExtractor = apiExtractor;
@@ -92,35 +95,21 @@ public class EtlOrchestrator
         }), m => _staging.GuardarComentariosSocialesAsync(m), ct);
     }
 
-    private async Task FaseCargaDwhAsync(CancellationToken ct)
-    {
-        _logger.LogInfo(">>> Iniciando Fase de Carga al Data Warehouse...");
-
-        var dataConsolidada = (await _staging.ObtenerTodaLaDataStagingAsync(ct)).ToArray();
-
-        if (dataConsolidada.Length == 0)
-        {
-            _logger.LogWarning("No hay datos en Staging para cargar al DWH.");
-            return;
-        }
-
-        try
-        {
-          
-            var tareasDimensiones = _dimLoaders
-                .Select(loader => loader.LoadAsync(dataConsolidada, ct));
-
-            await Task.WhenAll(tareasDimensiones);
-            _logger.LogInfo("✓ Dimensiones actualizadas.");
-
-            await _factLoader.LoadFactAsync(dataConsolidada, ct);
-            _logger.LogInfo("✓ Tabla de Hechos cargada.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError("✗ ERROR CRÍTICO en la carga al DWH: " + ex.Message, ex);
-        }
-    }
+     private async Task FaseCargaDwhAsync(CancellationToken ct)
+     {
+         var dataConsolidada = (await _staging.ObtenerTodaLaDataStagingAsync(ct)).ToArray();
+         if (dataConsolidada.Length == 0) return;
+         await _cleaner.LimpiarAsync(ct);
+         _logger.LogInfo("✓ DWH limpiado.");
+         await _dimLoaders.Aggregate(Task.CompletedTask, async (prev, loader) =>
+         {
+             await prev;
+             await loader.LoadAsync(dataConsolidada, ct);
+         });
+         _logger.LogInfo("✓ Dimensiones cargadas via Bulk Insert.");
+         await _factLoader.LoadFactAsync(dataConsolidada, ct);
+         _logger.LogInfo("✓ Fact.Opiniones cargada.");
+     }
 
     // --- Helper genérico (Corregido para retornar métricas) ---
     private async Task<(int registros, int errores)> ExtraerYPersistirAsync<TResult>(
