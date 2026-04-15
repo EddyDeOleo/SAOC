@@ -44,7 +44,7 @@ namespace AnalisisComentariosWeb.WKService
                     var orchestrator = scope.ServiceProvider
                         .GetRequiredService<EtlOrchestrator>();
 
-                    await orchestrator.EjecutarAsync(stoppingToken);
+                    await orchestrator.EjecutarEtlCompletoAsync(stoppingToken);
 
                     _logger.LogInformation(
                         "=== Ciclo completado: {Time} | Próximo en {Min} min ===",

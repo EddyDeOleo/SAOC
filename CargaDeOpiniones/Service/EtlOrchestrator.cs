@@ -1,5 +1,4 @@
-﻿
-using CargaDeEncuestasInternas.Entities.API;
+﻿using CargaDeEncuestasInternas.Entities.API;
 using CargaDeEncuestasInternas.Entities.Csv;
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.dboSchema;
@@ -13,7 +12,12 @@ public class EtlOrchestrator
     private readonly IExtractor<Encuesta> _csvExtractor;
     private readonly IExtractor<Resena> _dbExtractor;
     private readonly IExtractor<ComentarioSocialDto> _apiExtractor;
+
     private readonly IStagingRepository _staging;
+
+    private readonly IEnumerable<IDimensionLoader<OpinionExtraidaDto>> _dimLoaders;
+    private readonly IFactLoader<OpinionExtraidaDto> _factLoader;
+
     private readonly ILoggerService _logger;
 
     public EtlOrchestrator(
@@ -21,146 +25,121 @@ public class EtlOrchestrator
         IExtractor<Resena> dbExtractor,
         IExtractor<ComentarioSocialDto> apiExtractor,
         IStagingRepository staging,
-        ILoggerService logger)
+        ILoggerService logger,
+        IEnumerable<IDimensionLoader<OpinionExtraidaDto>> dimLoaders, 
+        IFactLoader<OpinionExtraidaDto> factLoader)
     {
         _csvExtractor = csvExtractor;
         _dbExtractor = dbExtractor;
         _apiExtractor = apiExtractor;
         _staging = staging;
         _logger = logger;
+        _dimLoaders = dimLoaders;
+        _factLoader = factLoader;
     }
 
-    public async Task EjecutarAsync(CancellationToken cancellationToken)
+    public async Task EjecutarEtlCompletoAsync(CancellationToken cancellationToken)
     {
-        // ── Stopwatch GLOBAL — mide el ciclo completo ─────────
         var swGlobal = Stopwatch.StartNew();
-        int totalRegistros = 0;
-        int totalErrores = 0;
 
         _logger.LogInfo("╔══════════════════════════════════════════════════╗");
-        _logger.LogInfo("║       EtlOrchestrator: INICIO DE EXTRACCIÓN      ║");
+        _logger.LogInfo("║        INICIO DE PROCESO ETL (E + L)             ║");
         _logger.LogInfo("╚══════════════════════════════════════════════════╝");
 
-        // ── CSV → Encuestas ───────────────────────────────────
-        var (regCsv, errCsv) = await ExtraerYPersistirAsync(
-            _csvExtractor,
-            datos => datos.Select(e => new OpinionExtraidaDto
-            {
-                CodigoOriginal = e.IdOpinion.ToString(),
-                IdCliente = e.IdCliente.ToString(),
-                IdProducto = e.IdProducto.ToString(),
-                Fecha = e.Fecha.ToString("yyyy-MM-dd"),
-                Comentario = e.Comentario?.Trim() ?? string.Empty,
-                Clasificacion = e.Clasificacion?.Trim(),
-                PuntajeSatisfaccion = e.PuntajeSatisfaccion,
-                FuenteOrigen = "CSV"
-            }),
-            mapped => _staging.GuardarEncuestasAsync(mapped),
-            cancellationToken);
+        await FaseExtraccionAsync(cancellationToken);
 
-        totalRegistros += regCsv;
-        totalErrores += errCsv;
+        await FaseCargaDwhAsync(cancellationToken);
 
-        // ── DATABASE → Reseñas Web ────────────────────────────
-        var (regDb, errDb) = await ExtraerYPersistirAsync(
-            _dbExtractor,
-            datos => datos.Select(r => new OpinionExtraidaDto
-            {
-                CodigoOriginal = r.idOpinionGlobal.ToString(),
-                IdCliente = string.Empty,
-                IdProducto = string.Empty,
-                Fecha = string.Empty,
-                Comentario = string.Empty,
-                Rating = r.Rating,
-                FuenteOrigen = "DATABASE"
-            }),
-            mapped => _staging.GuardarResenasAsync(mapped),
-            cancellationToken);
-
-        totalRegistros += regDb;
-        totalErrores += errDb;
-
-        // ── API → Comentarios Sociales ────────────────────────
-        var (regApi, errApi) = await ExtraerYPersistirAsync(
-            _apiExtractor,
-            datos => datos.Select(c => new OpinionExtraidaDto
-            {
-                CodigoOriginal = c.IdComentario,
-                IdCliente = c.IdCliente,
-                IdProducto = c.IdProducto,
-                Fecha = c.Fecha,
-                Comentario = c.Comentario,
-                RedSocial = c.RedSocial,
-                FuenteOrigen = "API"
-            }),
-            mapped => _staging.GuardarComentariosSocialesAsync(mapped),
-            cancellationToken);
-
-        totalRegistros += regApi;
-        totalErrores += errApi;
-
-        // ── Métricas globales ─────────────────────────────────
         swGlobal.Stop();
-        var duracion = swGlobal.Elapsed;
-        var cumpleMeta = duracion.TotalMinutes < 5;
-        var rendimiento = totalRegistros > 0
-            ? (int)(totalRegistros / duracion.TotalSeconds)
-            : 0;
-
-        _logger.LogInfo("╔══════════════════════════════════════════════════╗");
-        _logger.LogInfo("║         MÉTRICAS DE RENDIMIENTO DEL CICLO        ║");
-        _logger.LogInfo("╠══════════════════════════════════════════════════╣");
-        _logger.LogInfo($"║  Total registros procesados : {totalRegistros,10:N0}          ║");
-        _logger.LogInfo($"║  Total errores              : {totalErrores,10:N0}          ║");
-        _logger.LogInfo($"║  Tiempo total               : {duracion.Minutes:D2}m {duracion.Seconds:D2}s {duracion.Milliseconds:D3}ms      ║");
-        _logger.LogInfo($"║  Rendimiento                : {rendimiento,7:N0} registros/seg     ║");
-        _logger.LogInfo($"║  Meta < 5 minutos           : {(cumpleMeta ? "✓ CUMPLIDA" : "✗ NO CUMPLIDA"),10}          ║");
+        _logger.LogInfo($"║ CICLO TOTAL COMPLETADO EN: {swGlobal.Elapsed.Minutes}m {swGlobal.Elapsed.Seconds}s");
         _logger.LogInfo("╚══════════════════════════════════════════════════╝");
-
-        if (!cumpleMeta)
-            _logger.LogWarning(
-                $"⚠ El ciclo tardó {duracion.TotalMinutes:F2} minutos — excede la meta de 5 min.");
     }
 
-    // ── Helper genérico: extrae → mapea → persiste → log ─────
-    // Devuelve (registros procesados, errores)
+    private async Task FaseExtraccionAsync(CancellationToken ct)
+    {
+        _logger.LogInfo(">>> Iniciando Fase de Extracción a Staging...");
+
+        // CSV
+        await ExtraerYPersistirAsync(_csvExtractor, d => d.Select(e => new OpinionExtraidaDto
+        {
+            CodigoOriginal = e.IdOpinion.ToString(),
+            IdCliente = e.IdCliente.ToString(),
+            IdProducto = e.IdProducto.ToString(),
+            Fecha = e.Fecha.ToString("yyyy-MM-dd"),
+            Comentario = e.Comentario?.Trim() ?? string.Empty,
+            FuenteOrigen = "CSV",
+            PuntajeSatisfaccion = e.PuntajeSatisfaccion
+        }), m => _staging.GuardarEncuestasAsync(m), ct);
+
+        // DATABASE
+        await ExtraerYPersistirAsync(_dbExtractor, d => d.Select(r => new OpinionExtraidaDto
+        {
+            CodigoOriginal = r.idOpinionGlobal.ToString(),
+            FuenteOrigen = "DATABASE",
+            Rating = r.Rating
+        }), m => _staging.GuardarResenasAsync(m), ct);
+
+        // API
+        await ExtraerYPersistirAsync(_apiExtractor, d => d.Select(c => new OpinionExtraidaDto
+        {
+            CodigoOriginal = c.IdComentario,
+            IdCliente = c.IdCliente,
+            IdProducto = c.IdProducto,
+            Fecha = c.Fecha,
+            Comentario = c.Comentario,
+            RedSocial = c.RedSocial,
+            FuenteOrigen = "API"
+        }), m => _staging.GuardarComentariosSocialesAsync(m), ct);
+    }
+
+    private async Task FaseCargaDwhAsync(CancellationToken ct)
+    {
+        _logger.LogInfo(">>> Iniciando Fase de Carga al Data Warehouse...");
+
+        var dataConsolidada = (await _staging.ObtenerTodaLaDataStagingAsync(ct)).ToArray();
+
+        if (dataConsolidada.Length == 0)
+        {
+            _logger.LogWarning("No hay datos en Staging para cargar al DWH.");
+            return;
+        }
+
+        try
+        {
+          
+            var tareasDimensiones = _dimLoaders
+                .Select(loader => loader.LoadAsync(dataConsolidada, ct));
+
+            await Task.WhenAll(tareasDimensiones);
+            _logger.LogInfo("✓ Dimensiones actualizadas.");
+
+            await _factLoader.LoadFactAsync(dataConsolidada, ct);
+            _logger.LogInfo("✓ Tabla de Hechos cargada.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("✗ ERROR CRÍTICO en la carga al DWH: " + ex.Message, ex);
+        }
+    }
+
+    // --- Helper genérico (Corregido para retornar métricas) ---
     private async Task<(int registros, int errores)> ExtraerYPersistirAsync<TResult>(
         IExtractor<TResult> extractor,
         Func<IEnumerable<TResult>, IEnumerable<OpinionExtraidaDto>> mapear,
         Func<IEnumerable<OpinionExtraidaDto>, Task> persistir,
-        CancellationToken cancellationToken)
-        where TResult : class
+        CancellationToken ct) where TResult : class
     {
-        var sw = Stopwatch.StartNew();
-        _logger.LogInfo($"── [{extractor.NombreFuente}] Iniciando extracción...");
-
         try
         {
-            var datos = (await extractor.ExtractAsync(cancellationToken)).ToList();
+            var datos = (await extractor.ExtractAsync(ct)).ToList();
             var mapped = mapear(datos).ToList();
-
             await persistir(mapped);
-
-            sw.Stop();
-            _logger.LogInfo(
-                $"── [{extractor.NombreFuente}] ✓ {mapped.Count:N0} registros " +
-                $"en {sw.ElapsedMilliseconds:N0}ms " +
-                $"({(mapped.Count / (sw.ElapsedMilliseconds / 1000.0)):N0} reg/seg)");
-
-            await _staging.RegistrarLogAsync(
-                extractor.NombreFuente, mapped.Count, 0, "COMPLETADO");
-
+            _logger.LogInfo($"── [{extractor.NombreFuente}] ✓ {mapped.Count} registros extraídos.");
             return (mapped.Count, 0);
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            _logger.LogError(
-                $"── [{extractor.NombreFuente}] ✗ ERROR en {sw.ElapsedMilliseconds:N0}ms: {ex.Message}", ex);
-
-            await _staging.RegistrarLogAsync(
-                extractor.NombreFuente, 0, 1, "ERROR", ex.Message);
-
+            _logger.LogError($"── [{extractor.NombreFuente}] ✗ Error: {ex.Message}");
             return (0, 1);
         }
     }

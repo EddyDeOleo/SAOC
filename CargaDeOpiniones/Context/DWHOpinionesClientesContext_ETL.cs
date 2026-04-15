@@ -9,9 +9,9 @@ using System.Collections.Generic;
 
 namespace EncuestasInternas.Entities;
 
-public partial class DWHOpinionesClientesContext : DbContext
+public partial class DWHOpinionesClientesContext_ETL : DbContext
 {
-    public DWHOpinionesClientesContext(DbContextOptions<DWHOpinionesClientesContext> options)
+    public DWHOpinionesClientesContext_ETL(DbContextOptions<DWHOpinionesClientesContext_ETL> options)
         : base(options)
     {
     }

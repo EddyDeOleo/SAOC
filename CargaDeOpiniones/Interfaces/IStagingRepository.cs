@@ -15,5 +15,9 @@ namespace CargaDeEncuestasInternas.Interfaces
             int errores,
             string estado,
             string? mensajeError = null);
+
+        Task<IEnumerable<OpinionExtraidaDto>> ObtenerTodaLaDataStagingAsync(CancellationToken ct = default);
     }
+
+
 }

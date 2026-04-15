@@ -4,6 +4,7 @@ using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
 using CargaDeEncuestasInternas.Models.DwhSchema.Entities;
 using CargaDeEncuestasInternas.Models.DwhSchema.Entities.StgSchema;
+using Microsoft.EntityFrameworkCore;
 
 namespace CargaDeEncuestasInternas.Persistence.Repositories.Dwh;
 
@@ -116,5 +117,53 @@ public class StagingRepository : IStagingRepository
 
         _logger.LogInfo(
             $"[Log] {fuente} → {estado}: {registros} registros, {errores} errores");
+    }
+
+    public async Task<IEnumerable<OpinionExtraidaDto>> ObtenerTodaLaDataStagingAsync(CancellationToken ct = default)
+    {
+        var rawEncuestas = await _db.Encuestas.ToListAsync(ct);
+
+        var encuestas = rawEncuestas.Select(e => {
+            int.TryParse(e.PuntajeSatisfaccion, out var p); 
+            return new OpinionExtraidaDto
+            {
+                CodigoOriginal = e.IdOpinion,
+                IdCliente = e.IdCliente,
+                IdProducto = e.IdProducto,
+                Fecha = e.Fecha,
+                Comentario = e.Comentario,
+                Clasificacion = e.Clasificacion,
+                PuntajeSatisfaccion = p > 0 ? p : null, 
+                FuenteOrigen = "CSV"
+            };
+        });
+
+        var resenas = await _db.Resenas
+            .Select(r => new OpinionExtraidaDto
+            {
+                CodigoOriginal = r.IdOpinionGlobal.ToString(),
+                IdCliente = r.IdCliente.ToString(),
+                IdProducto = r.IdProducto.ToString(),
+                Fecha = r.Fecha,
+                Comentario = r.Comentario,
+                Rating = r.Rating,
+                FuenteOrigen = "DATABASE"
+            })
+            .ToListAsync(ct);
+
+        var sociales = await _db.ComentariosSociales
+            .Select(s => new OpinionExtraidaDto
+            {
+                CodigoOriginal = s.IdComentario,
+                IdCliente = s.IdCliente,
+                IdProducto = s.IdProducto,
+                Fecha = s.Fecha,
+                Comentario = s.Comentario,
+                RedSocial = s.RedSocial,
+                FuenteOrigen = "API"
+            })
+            .ToListAsync(ct);
+
+        return encuestas.Concat(resenas).Concat(sociales).ToArray();
     }
 }
