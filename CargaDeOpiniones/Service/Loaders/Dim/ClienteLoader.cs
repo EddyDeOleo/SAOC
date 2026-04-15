@@ -24,15 +24,15 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Dim
             );
 
             var entidades = idsUnicos
-                .Select(id => new Cliente
-                {
-                    idCliente = id,
-                    NombreCliente = $"Cliente_{id}",
-                    Email = string.Empty,
-                    Pais = "N/D",
-                    Segmento = "N/D"
-                })
-                .ToArray();
+    .Select(id => new Cliente
+    {
+        idCliente = id,   
+        NombreCliente = $"Cliente_{id}",
+        Email = string.Empty,
+        Pais = "N/D",
+        Segmento = "N/D"
+    })
+    .ToArray();
 
             await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }

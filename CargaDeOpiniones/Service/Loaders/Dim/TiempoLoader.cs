@@ -33,29 +33,30 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 
                         return pudo ? DateOnly.FromDateTime(dt) : DateOnly.MinValue;
                     })
-                    .Where(f => f != DateOnly.MinValue)   // descarta fechas inválidas
+                    .Where(f => f != DateOnly.MinValue)   
             );
 
             var cultura = new CultureInfo("es-ES");
 
             var entidades = fechasUnicas
-                .Select(fecha =>
-                {
-                    var diaSemana = (int)fecha.DayOfWeek;  
-                    return new Tiempo
-                    {
-                        Fecha = fecha,
-                        Anio = (short)fecha.Year,
-                        Trimestre = (byte)((fecha.Month - 1) / 3 + 1),
-                        Mes = (byte)fecha.Month,
-                        NombreMes = fecha.ToString("MMMM", cultura),
-                        Semana = (byte)ISOWeek.GetWeekOfYear(fecha.ToDateTime(TimeOnly.MinValue)),
-                        DiaSemana = (byte)diaSemana,
-                        NombreDia = fecha.ToString("dddd", cultura),
-                        EsFinDeSemana = diaSemana is 0 or 6
-                    };
-                })
-                .ToArray();
+    .Select(fecha =>
+    {
+        var diaSemana = (int)fecha.DayOfWeek;
+        return new Tiempo
+        {
+            idTiempo = (fecha.Year * 10000) + (fecha.Month * 100) + fecha.Day,
+            Fecha = fecha,
+            Anio = (short)fecha.Year,
+            Trimestre = (byte)((fecha.Month - 1) / 3 + 1),
+            Mes = (byte)fecha.Month,
+            NombreMes = fecha.ToString("MMMM", cultura),
+            Semana = (byte)ISOWeek.GetWeekOfYear(fecha.ToDateTime(TimeOnly.MinValue)),
+            DiaSemana = (byte)diaSemana,
+            NombreDia = fecha.ToString("dddd", cultura),
+            EsFinDeSemana = diaSemana is 0 or 6
+        };
+    })
+    .ToArray();
 
             await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }

@@ -23,13 +23,13 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Dim
             );
 
             var entidades = idsUnicos
-                .Select(id => new Producto
-                {
-                    idProducto = id,
-                    NombreProducto = $"Producto_{id}",
-                    Categoria = "N/D"
-                })
-                .ToArray();
+    .Select(id => new Producto
+    {
+        idProducto = id,      
+        NombreProducto = $"Producto_{id}",
+        Categoria = "N/D"
+    })
+    .ToArray();
 
             await _db.BulkInsertAsync(entidades, cancellationToken: ct);
         }

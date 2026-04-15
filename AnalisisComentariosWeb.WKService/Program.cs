@@ -43,16 +43,18 @@ builder.Services.AddHttpClient("ComentariosApi", client =>
 builder.Services.AddScoped<ILoggerService, LoggerService>();
 builder.Services.AddScoped<IStagingRepository, StagingRepository>();
 
+builder.Services.AddScoped<DwhCleanerService>();
+
 builder.Services.AddScoped<IExtractor<Encuesta>, CsvExtractor>();
 builder.Services.AddScoped<IExtractor<Resena>, DatabaseExtractor>();
 builder.Services.AddScoped<IExtractor<ComentarioSocialDto>, ApiExtractor>();
 
-builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, TiempoLoader>();
-builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, ProductoLoader>();
-builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, ClienteLoader>();
 builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, CanalLoader>();
 builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, ClasificacionLoader>();
 builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, TipoOpinionLoader>();
+builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, TiempoLoader>();
+builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, ClienteLoader>();
+builder.Services.AddScoped<IDimensionLoader<OpinionExtraidaDto>, ProductoLoader>();
 
 // Registro del Cargador de Hechos
 builder.Services.AddScoped<IFactLoader<OpinionExtraidaDto>, OpinionesFactLoader>();
