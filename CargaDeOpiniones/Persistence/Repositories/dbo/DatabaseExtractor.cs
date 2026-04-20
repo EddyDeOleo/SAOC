@@ -1,6 +1,7 @@
 ﻿
+using Resena = CargaDeEncuestasInternas.Entities.dbo.Resena;
+
 using CargaDeEncuestasInternas.Interfaces;
-using CargaDeEncuestasInternas.Models.dboSchema;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Data;
@@ -28,7 +29,7 @@ public class DatabaseExtractor : IExtractor<Resena>
     }
 
     public async Task<IEnumerable<Resena>> ExtractAsync(
-        CancellationToken cancellationToken = default)
+     CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
         var connString = _config.GetConnectionString("OltpConnection")
@@ -42,7 +43,6 @@ public class DatabaseExtractor : IExtractor<Resena>
         await using var conn = new SqlConnection(connString);
         await conn.OpenAsync(cancellationToken);
 
-        // Stored Procedure — más eficiente y mantenible que query inline
         await using var cmd = new SqlCommand("sp_ObtenerResenas", conn)
         {
             CommandType = CommandType.StoredProcedure,
@@ -59,6 +59,11 @@ public class DatabaseExtractor : IExtractor<Resena>
             resultado.Add(new Resena
             {
                 idOpinionGlobal = int.Parse(soloNumeros),
+                CodigoOriginal = codigoRaw,
+                idCliente = Convert.ToInt32(reader["idCliente"]),
+                idProducto = Convert.ToInt32(reader["idProducto"]),
+                Fecha = reader["Fecha"].ToString()!,
+                Comentario = reader["Comentario"].ToString() ?? string.Empty,
                 Rating = Convert.ToByte(reader["Rating"])
             });
         }

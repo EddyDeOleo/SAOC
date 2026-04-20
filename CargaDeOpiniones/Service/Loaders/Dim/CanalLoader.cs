@@ -1,9 +1,10 @@
 ﻿
-using EFCore.BulkExtensions;
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Models.DTOs;
+using EFCore.BulkExtensions;
 using EncuestasInternas.Entities;
 using EncuestasInternas.Entities.DimSchema;
+using Microsoft.Data.SqlClient;
 
 namespace CargaDeEncuestasInternas.Service.Loaders.Dim
 {
@@ -31,7 +32,8 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Dim
                 })
                 .ToArray();
 
-            await _db.BulkInsertAsync(entidades, cancellationToken: ct);
+            var bulkConfig = new BulkConfig { SqlBulkCopyOptions = SqlBulkCopyOptions.KeepIdentity };
+            await _db.BulkInsertAsync(entidades, bulkConfig, cancellationToken: ct);
         }
     }
 }

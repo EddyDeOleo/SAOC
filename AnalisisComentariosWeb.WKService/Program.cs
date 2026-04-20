@@ -3,7 +3,6 @@ using CargaDeEncuestasInternas.Entities.API;
 using CargaDeEncuestasInternas.Entities.Csv;
 using CargaDeEncuestasInternas.Interfaces;
 using CargaDeEncuestasInternas.Service.Loaders.Dim; 
-using CargaDeEncuestasInternas.Models.dboSchema;
 using CargaDeEncuestasInternas.Models.DTOs;
 using CargaDeEncuestasInternas.Persistence.Repositories.API;
 using CargaDeEncuestasInternas.Persistence.Repositories.Csv;
@@ -14,6 +13,8 @@ using CargaDeEncuestasInternas.Service.Loaders.Fact;
 using Microsoft.EntityFrameworkCore;
 using EncuestasInternas.Entities;
 using CargaDeEncuestasInternas.Models.DwhSchema.Entities;
+using Resena = CargaDeEncuestasInternas.Entities.dbo.Resena;
+
 
 var builder = Host.CreateApplicationBuilder(args);
 var config = builder.Configuration;

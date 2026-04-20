@@ -110,10 +110,40 @@ namespace CargaDeEncuestasInternas.Service.Loaders.Fact
                 && _clasificacionPorEtiqueta.TryGetValue(d.Clasificacion, out var id))
                 return id;
 
-            return IdClasificacionNeutraPorDefecto;
+            var puntaje = d.PuntajeSatisfaccion ?? d.Rating;
+            if (puntaje.HasValue)
+                return puntaje.Value switch
+                {
+                    >= 4 => 1, 
+                    <= 2 => 2,  
+                    _ => 3  
+                };
+
+            return ClasificarPorTexto(d.Comentario);
         }
 
-        // ─── Parseo de fecha resiliente ───────────────────────────────────────────────
+        private static readonly string[] _palabrasPositivas =
+            ["excelente", "genial", "increíble", "recomiendo", "satisfecho",
+     "perfecto", "bueno", "rápido", "eficiente", "feliz"];
+
+        private static readonly string[] _palabrasNegativas =
+            ["malo", "pésimo", "terrible", "decepcionado", "lento",
+     "horrible", "insatisfecho", "problema", "error", "deficiente"];
+
+        private static int ClasificarPorTexto(string? comentario)
+        {
+            if (string.IsNullOrWhiteSpace(comentario)) return 3;
+
+            var texto = comentario.ToLowerInvariant();
+
+            var positivas = _palabrasPositivas.Count(p => texto.Contains(p));
+            var negativas = _palabrasNegativas.Count(p => texto.Contains(p));
+
+            if (positivas > negativas) return 1; 
+            if (negativas > positivas) return 2;  
+            return 3;                            
+        }
+
         private static bool TryParseFecha(string? raw, out DateOnly fecha)
         {
             fecha = DateOnly.MinValue;
